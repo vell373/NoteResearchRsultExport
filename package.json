@@ -1,0 +1,15 @@
+{
+  "name": "noteresearchrsultexport",
+  "version": "1.0.0",
+  "main": "content_script.js",
+  "scripts": {
+    "test": "jest --verbose"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

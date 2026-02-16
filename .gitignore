@@ -1,0 +1,43 @@
+# 依存パッケージ（npm install で復元）
+node_modules/
+
+# ローカル・IDE 設定（共有しない）
+.claude/
+.idea/
+.vscode/
+*.sublime-*
+
+# OS が作るファイル
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ログ・デバッグ
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# テスト・カバレッジ
+coverage/
+.nyc_output/
+*.lcov
+
+# Jest キャッシュ
+.jest-cache/
+
+# 環境変数（秘密情報を含む可能性）
+.env
+.env.local
+.env.*.local
+
+# 一時ファイル
+*.tmp
+*.temp
+*.swp
+*~
+
+# パッケージ配布用（必要なら別途管理）
+*.crx
+*.pem
+*.zip

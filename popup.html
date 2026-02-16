@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Note検索結果エクスポーター</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 340px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #ffffff;
+      color: #333;
+      padding: 20px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #41c9b4;
+    }
+
+    .header h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #333;
+    }
+
+    .header .logo {
+      width: 28px;
+      height: 28px;
+      background: #41c9b4;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 6px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus {
+      border-color: #41c9b4;
+      box-shadow: 0 0 0 3px rgba(65, 201, 180, 0.15);
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 12px;
+      background: #41c9b4;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-primary:hover {
+      background: #36b5a0;
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      display: none;
+    }
+
+    .status.info {
+      display: block;
+      background: #e8f8f5;
+      color: #1a7a6d;
+      border: 1px solid #b2ece3;
+    }
+
+    .status.error {
+      display: block;
+      background: #fdecea;
+      color: #c0392b;
+      border: 1px solid #f5c6cb;
+    }
+
+    .status.success {
+      display: block;
+      background: #e8f8f5;
+      color: #1a7a6d;
+      border: 1px solid #b2ece3;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #eee;
+      border-radius: 3px;
+      margin-top: 8px;
+      overflow: hidden;
+      display: none;
+    }
+
+    .progress-bar.active {
+      display: block;
+    }
+
+    .progress-bar .fill {
+      height: 100%;
+      background: #41c9b4;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    .note {
+      margin-top: 12px;
+      font-size: 11px;
+      color: #999;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">N</div>
+    <h1>検索結果エクスポーター</h1>
+  </div>
+
+  <div class="form-group">
+    <label for="count">取得件数</label>
+    <input type="number" id="count" value="50" min="1" max="500" placeholder="取得する記事数を入力">
+  </div>
+
+  <button class="btn-primary" id="startBtn">データ取得開始</button>
+
+  <div class="progress-bar" id="progressBar">
+    <div class="fill" id="progressFill"></div>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <p class="note">
+    ※ note.comの検索結果ページで使用してください。<br>
+    ※ 取得件数が多い場合は時間がかかります。
+  </p>
+
+  <script src="popup.js"></script>
+</body>
+</html>
