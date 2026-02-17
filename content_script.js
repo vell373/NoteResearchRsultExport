@@ -36,6 +36,30 @@
     return match ? match[1] : "";
   }
 
+  // --- ページ種別判定 ---
+
+  /**
+   * 現在のページがハッシュタグページかキーワード検索ページかを判定
+   * @returns {"hashtag" | "search"}
+   */
+  function getPageType() {
+    return window.location.pathname.startsWith("/hashtag/") ? "hashtag" : "search";
+  }
+
+  /**
+   * ハッシュタグページからハッシュタグ名を抽出
+   * @returns {string} デコード済みハッシュタグ名（例: "個人開発"）
+   */
+  function getHashtagName() {
+    const match = window.location.pathname.match(/^\/hashtag\/(.+?)(?:\/|$)/);
+    if (!match) return "";
+    try {
+      return decodeURIComponent(match[1]);
+    } catch (e) {
+      return match[1];
+    }
+  }
+
   // --- 戦略1: note.com 内部API経由でデータ取得 ---
 
   function getSearchParams() {
@@ -117,6 +141,95 @@
         await sleep(500);
       } catch (err) {
         console.warn(`[NoteExporter] APIエラー: ${err.message}`, err);
+        return null;
+      }
+    }
+
+    return articles.length > 0 ? articles : null;
+  }
+
+  /**
+   * ハッシュタグページ用: note.com内部APIからデータを取得（ページネーション対応）
+   */
+  async function fetchFromHashtagAPI(targetCount) {
+    const hashtag = getHashtagName();
+    if (!hashtag) {
+      console.warn("[NoteExporter] ハッシュタグ名が見つかりません");
+      return null;
+    }
+
+    // URLからソートパラメータを検出（デフォルトは人気順）
+    const url = new URL(window.location.href);
+    const sort = url.searchParams.get("sort") || "popular";
+
+    const articles = [];
+    let page = 1;
+
+    console.log(`[NoteExporter] ハッシュタグAPI戦略: hashtag="${hashtag}", sort="${sort}", 目標=${targetCount}件`);
+
+    while (articles.length < targetCount) {
+      const apiUrl = `https://note.com/api/v3/hashtags/${encodeURIComponent(hashtag)}/notes?page=${page}&sort=${sort}`;
+
+      console.log(`[NoteExporter] ハッシュタグAPI取得中: ${apiUrl}`);
+
+      try {
+        const response = await fetch(apiUrl, {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+
+        if (!response.ok) {
+          console.warn(`[NoteExporter] ハッシュタグAPI応答エラー: ${response.status}`);
+          return null;
+        }
+
+        const rawText = await response.text();
+        console.log(`[NoteExporter] ハッシュタグAPI生レスポンス (先頭500文字): ${rawText.substring(0, 500)}`);
+
+        let data;
+        try {
+          data = JSON.parse(rawText);
+        } catch (jsonErr) {
+          console.warn(`[NoteExporter] JSONパースエラー: ${jsonErr.message}`);
+          return null;
+        }
+
+        console.log("[NoteExporter] トップレベルキー:", Object.keys(data || {}));
+        if (data?.data && typeof data.data === "object") {
+          console.log("[NoteExporter] data.data キー:", Object.keys(data.data));
+        }
+
+        const noteObjects = data?.data?.notes;
+        if (!Array.isArray(noteObjects) || noteObjects.length === 0) {
+          console.log(`[NoteExporter] ハッシュタグAPI: これ以上の結果なし (page=${page})`);
+          break;
+        }
+
+        for (const noteObj of noteObjects) {
+          if (articles.length >= targetCount) break;
+          try {
+            const article = extractArticleFromNote(noteObj);
+            if (article && article.title) {
+              articles.push(article);
+            }
+          } catch (noteErr) {
+            console.warn(`[NoteExporter] パースエラー:`, noteErr.message);
+          }
+        }
+
+        scrapingState.current = articles.length;
+        console.log(`[NoteExporter] ハッシュタグAPI: ${articles.length}/${targetCount}件取得`);
+
+        // 最終ページ判定
+        if (data?.data?.is_last_page) {
+          console.log("[NoteExporter] ハッシュタグAPI: 最終ページに到達");
+          break;
+        }
+
+        page++;
+        await sleep(500);
+      } catch (err) {
+        console.warn(`[NoteExporter] ハッシュタグAPIエラー: ${err.message}`, err);
         return null;
       }
     }
@@ -504,6 +617,7 @@
       ];
 
       // 方法1: 記事詳細APIを試行
+      let apiNetworkError = false;
       try {
         const apiUrl = `https://note.com/api/v3/notes/${noteKey}`;
         const apiRes = await fetch(apiUrl, {
@@ -536,62 +650,71 @@
           }
         }
       } catch (apiErr) {
-        console.warn(`[NoteExporter] 記事API失敗: ${apiErr.message}`);
+        apiNetworkError = true;
+        if (!fetchLikeRating._networkErrorLogged) {
+          fetchLikeRating._networkErrorLogged = true;
+          console.warn(`[NoteExporter] 記事API失敗 (以降同様のエラーは省略): ${apiErr.message}`);
+        }
       }
 
-      // 方法2: HTMLページから抽出
-      try {
-        const pageRes = await fetch(articleUrl, {
-          credentials: "include",
-        });
-        if (pageRes.ok) {
-          const html = await pageRes.text();
+      // 方法2: HTMLページから抽出（APIがネットワークエラーの場合はスキップ）
+      if (!apiNetworkError) {
+        try {
+          const pageRes = await fetch(articleUrl, {
+            credentials: "include",
+          });
+          if (pageRes.ok) {
+            const html = await pageRes.text();
 
-          // パターン1: "XX人が高評価" テキストを検索
-          const ratingMatch = html.match(/(\d+)\s*人が高評価/);
-          if (ratingMatch) {
-            const count = parseInt(ratingMatch[1], 10);
-            console.log(`[NoteExporter] HTML高評価数: ${count} (${noteKey})`);
-            return count;
+            // パターン1: "XX人が高評価" テキストを検索
+            const ratingMatch = html.match(/(\d+)\s*人が高評価/);
+            if (ratingMatch) {
+              const count = parseInt(ratingMatch[1], 10);
+              console.log(`[NoteExporter] HTML高評価数: ${count} (${noteKey})`);
+              return count;
+            }
+
+            // パターン2: __NEXT_DATA__ 内のJSONから高評価数を探す
+            const nextDataMatch = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+            if (nextDataMatch) {
+              try {
+                const nextData = JSON.parse(nextDataMatch[1]);
+                // __NEXT_DATA__内を再帰的に探索
+                const rating = findRatingInObject(nextData, ratingFieldCandidates);
+                if (rating > 0) {
+                  console.log(`[NoteExporter] __NEXT_DATA__高評価数: ${rating} (${noteKey})`);
+                  return rating;
+                }
+              } catch (e) { /* JSONパースエラーは無視 */ }
+            }
+
+            // パターン3: __NUXT__ データから探す（旧バージョン対応）
+            const nuxtMatch = html.match(/__NUXT__[^=]*=\s*(\{[\s\S]*?\});?\s*<\/script>/);
+            if (nuxtMatch) {
+              try {
+                const ratingInNuxt = nuxtMatch[1].match(/"(?:rating_count|ratingCount|recommend_count|high_rating_count|buyer_like_count)"\s*:\s*(\d+)/);
+                if (ratingInNuxt) {
+                  const count = parseInt(ratingInNuxt[1], 10);
+                  console.log(`[NoteExporter] Nuxt高評価数: ${count} (${noteKey})`);
+                  return count;
+                }
+              } catch (e) { /* ignore */ }
+            }
+
+            // パターン4: HTML内のJSON-LD等に「高評価」関連データがないか（テキストマッチ）
+            const htmlRatingMatch = html.match(/"(?:rating_count|ratingCount|recommend_count|high_rating_count|buyer_like_count)"\s*:\s*(\d+)/);
+            if (htmlRatingMatch) {
+              const count = parseInt(htmlRatingMatch[1], 10);
+              console.log(`[NoteExporter] HTML-JSON高評価数: ${count} (${noteKey})`);
+              return count;
+            }
           }
-
-          // パターン2: __NEXT_DATA__ 内のJSONから高評価数を探す
-          const nextDataMatch = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-          if (nextDataMatch) {
-            try {
-              const nextData = JSON.parse(nextDataMatch[1]);
-              // __NEXT_DATA__内を再帰的に探索
-              const rating = findRatingInObject(nextData, ratingFieldCandidates);
-              if (rating > 0) {
-                console.log(`[NoteExporter] __NEXT_DATA__高評価数: ${rating} (${noteKey})`);
-                return rating;
-              }
-            } catch (e) { /* JSONパースエラーは無視 */ }
-          }
-
-          // パターン3: __NUXT__ データから探す（旧バージョン対応）
-          const nuxtMatch = html.match(/__NUXT__[^=]*=\s*(\{[\s\S]*?\});?\s*<\/script>/);
-          if (nuxtMatch) {
-            try {
-              const ratingInNuxt = nuxtMatch[1].match(/"(?:rating_count|ratingCount|recommend_count|high_rating_count|buyer_like_count)"\s*:\s*(\d+)/);
-              if (ratingInNuxt) {
-                const count = parseInt(ratingInNuxt[1], 10);
-                console.log(`[NoteExporter] Nuxt高評価数: ${count} (${noteKey})`);
-                return count;
-              }
-            } catch (e) { /* ignore */ }
-          }
-
-          // パターン4: HTML内のJSON-LD等に「高評価」関連データがないか（テキストマッチ）
-          const htmlRatingMatch = html.match(/"(?:rating_count|ratingCount|recommend_count|high_rating_count|buyer_like_count)"\s*:\s*(\d+)/);
-          if (htmlRatingMatch) {
-            const count = parseInt(htmlRatingMatch[1], 10);
-            console.log(`[NoteExporter] HTML-JSON高評価数: ${count} (${noteKey})`);
-            return count;
+        } catch (htmlErr) {
+          if (!fetchLikeRating._htmlErrorLogged) {
+            fetchLikeRating._htmlErrorLogged = true;
+            console.warn(`[NoteExporter] HTML取得失敗 (以降同様のエラーは省略): ${htmlErr.message}`);
           }
         }
-      } catch (htmlErr) {
-        console.warn(`[NoteExporter] HTML取得失敗: ${htmlErr.message}`);
       }
     } catch (err) {
       console.warn(`[NoteExporter] 高評価数取得エラー: ${err.message}`);
@@ -754,16 +877,30 @@
         try {
           diagnoseDom();
 
-          console.log("[NoteExporter] 戦略1: API経由で取得を試行...");
-          let articles = await fetchFromAPI(message.count);
+          const pageType = getPageType();
+          console.log(`[NoteExporter] ページ種別: ${pageType}`);
 
-          if (!Array.isArray(articles) || articles.length === 0) {
-            console.log("[NoteExporter] 戦略2: DOMスクレイピングにフォールバック...");
+          let articles;
+
+          if (pageType === "hashtag") {
+            // ハッシュタグページ: APIはソート・like_countが不正確なため、
+            // ページに表示されているデータをDOMから直接取得する
+            console.log("[NoteExporter] ハッシュタグページ: DOMスクレイピングで取得...");
             await autoScrollAndCollect(message.count);
             articles = scrapingState.articles;
           } else {
-            scrapingState.articles = articles;
-            scrapingState.current = articles.length;
+            // 検索ページ: API → DOMフォールバック
+            console.log("[NoteExporter] 戦略1: API経由で取得を試行...");
+            articles = await fetchFromAPI(message.count);
+
+            if (!Array.isArray(articles) || articles.length === 0) {
+              console.log("[NoteExporter] 戦略2: DOMスクレイピングにフォールバック...");
+              await autoScrollAndCollect(message.count);
+              articles = scrapingState.articles;
+            } else {
+              scrapingState.articles = articles;
+              scrapingState.current = articles.length;
+            }
           }
 
           if (Array.isArray(articles) && articles.length > 0) {
@@ -821,6 +958,8 @@
       fetchLikeRating,
       fetchAllLikeRatings,
       findRatingInObject,
+      getPageType,
+      getHashtagName,
     };
   }
 

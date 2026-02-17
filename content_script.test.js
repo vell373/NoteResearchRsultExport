@@ -506,6 +506,54 @@ describe("escapeCsvField", () => {
 });
 
 // ========================================
+// getPageType / getHashtagName
+// ========================================
+describe("getPageType", () => {
+  const originalHref = window.location.href;
+
+  afterEach(() => {
+    Object.defineProperty(window.location, "href", { value: originalHref, writable: true });
+    Object.defineProperty(window.location, "pathname", { value: new URL(originalHref).pathname, writable: true });
+  });
+
+  test("検索ページの場合は 'search' を返す", () => {
+    Object.defineProperty(window.location, "pathname", { value: "/search", writable: true });
+    expect(funcs.getPageType()).toBe("search");
+  });
+
+  test("ハッシュタグページの場合は 'hashtag' を返す", () => {
+    Object.defineProperty(window.location, "pathname", { value: "/hashtag/個人開発", writable: true });
+    expect(funcs.getPageType()).toBe("hashtag");
+  });
+
+  test("その他のページの場合は 'search' を返す", () => {
+    Object.defineProperty(window.location, "pathname", { value: "/user/notes", writable: true });
+    expect(funcs.getPageType()).toBe("search");
+  });
+});
+
+describe("getHashtagName", () => {
+  afterEach(() => {
+    Object.defineProperty(window.location, "pathname", { value: "/search", writable: true });
+  });
+
+  test("ハッシュタグ名を正しく抽出する", () => {
+    Object.defineProperty(window.location, "pathname", { value: "/hashtag/%E5%80%8B%E4%BA%BA%E9%96%8B%E7%99%BA", writable: true });
+    expect(funcs.getHashtagName()).toBe("個人開発");
+  });
+
+  test("英語ハッシュタグ", () => {
+    Object.defineProperty(window.location, "pathname", { value: "/hashtag/programming", writable: true });
+    expect(funcs.getHashtagName()).toBe("programming");
+  });
+
+  test("ハッシュタグページでない場合は空文字列", () => {
+    Object.defineProperty(window.location, "pathname", { value: "/search", writable: true });
+    expect(funcs.getHashtagName()).toBe("");
+  });
+});
+
+// ========================================
 // fetchLikeRating（高評価数取得）
 // ========================================
 describe("fetchLikeRating", () => {

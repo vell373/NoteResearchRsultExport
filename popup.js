@@ -37,9 +37,10 @@ document.addEventListener("DOMContentLoaded", () => {
       currentWindow: true,
     });
 
-    if (!tab || !tab.url || !tab.url.includes("note.com/search")) {
+    const isSearchPage = tab && tab.url && (tab.url.includes("note.com/search") || tab.url.includes("note.com/hashtag/"));
+    if (!isSearchPage) {
       setStatus(
-        "note.comの検索結果ページを開いた状態で実行してください。",
+        "note.comの検索結果ページまたはハッシュタグページを開いた状態で実行してください。",
         "error"
       );
       return;

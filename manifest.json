@@ -14,7 +14,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://note.com/search*"],
+      "matches": ["https://note.com/search*", "https://note.com/hashtag/*"],
       "js": ["content_script.js"],
       "css": ["styles.css"],
       "run_at": "document_idle"
